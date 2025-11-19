@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Погода —, Казахстан</title>
+  <meta name="description" content="Текущая погода и сводки: почасовой и ежедневный прогноз, давление, влажность, ветер, графики." />
+  <link rel="preconnect" href="https://api.open-meteo.com" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #60a5fa;
+      --good: #34d399;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --card: #1f2937;
+    }
+    * { box-sizing: border-box }
+    html, body { margin:0; padding:0; background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji" }
+    header { padding: 16px 20px; background: var(--panel); border-bottom: 1px solid #1f2937; position: sticky; top: 0; z-index: 10 }
+    header h1 { margin:0; font-size: 20px }
+    header small { color: var(--muted) }
+    main { max-width: 1100px; margin: 0 auto; padding: 20px }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px }
+    .card { background: var(--card); border: 1px solid #374151; border-radius: 12px; padding: 16px }
+    .span-12 { grid-column: span 12 }
+    .span-8 { grid-column: span 8 }
+    .span-4 { grid-column: span 4 }
+    .span-6 { grid-column: span 6 }
+    .label { color: var(--muted); font-size: 12px }
+    .value { font-size: 28px; font-weight: 600 }
+    .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap }
+    .chip { background: #111827; border: 1px solid #374151; padding: 6px 10px; border-radius: 999px; font-size: 12px; color: var(--muted) }
+    .status { font-weight: 600 }
+    .good { color: var(--good) }
+    .warn { color: var(--warn) }
+    .bad { color: var(--bad) }
+    .list { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px }
+    .list .item { background: #111827; border: 1px solid #374151; border-radius: 10px; padding: 10px; font-size: 14px }
+    .item .top { display:flex; justify-content:space-between; color: var(--muted) }
+    .item .big { font-size: 20px; font-weight:600 }
+    footer { color: var(--muted); text-align:center; padding: 24px 12px }
+    button, select { background:#0b1220; color:var(--text); border:1px solid #334155; border-radius:8px; padding:8px 10px }
+    .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin: 10px 0 0 }
+    .error { background:#1b1b1b; border:1px solid #ef4444; color:#fecaca; border-radius:8px; padding:10px; margin:16px 0 }
+    a { color: var(--accent); text-decoration: none }
+    @media (max-width: 900px) {
+      .list { grid-template-columns: repeat(2, 1fr) }
+      .span-8, .span-4, .span-6 { grid-column: span 12 }
+    }
+    @media (max-width: 560px) {
+      .list { grid-template-columns: 1fr }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Погода — , Казахстан <small id="local-time"></small></h1>
+    <div class="controls">
+      <label>
+        Локация:
+        <select id="location-select" title="Выберите город">
+          <option value="43.2567,76.9286">Алматы</option>
+          <option value="51.1694,71.4491">Астана</option>
+          <option value="42.3417,69.5901">Шымкент</option>
+        </select>
+      </label>
+      <label>
+        Единицы:
+        <select id="units-select">
+          <option value="metric">Метрические (°C, м/с)</option>
+          <option value="imperial">Имперские (°F, mph)</option>
+        </select>
+      </label>
+      <button id="refresh-btn">Обновить</button>
+      <span class="chip" id="updated-chip">—</span>
+    </div>
+  </header>
+
+  <main>
+    <div id="error" class="error" style="display:none"></div>
+
+    <section class="grid">
+      <div class="card span-8">
+        <div class="row">
+          <div>
+            <div class="label">Состояние</div>
+            <div class="value" id="condition">—</div>
+            <div class="label">Описание</div>
+            <div id="description" class="status">—</div>
+          </div>
+          <div>
+            <div class="label">Температура</div>
+            <div class="value" id="temp">—</div>
+            <div class="label">Ощущается как</div>
+            <div id="feels" class="status">—</div>
+          </div>
+          <div>
+            <div class="label">Ветер</div>
+            <div class="value" id="wind">—</div>
+            <div class="label">Направление</div>
+            <div id="wind-dir" class="status">—</div>
+          </div>
+          <div>
+            <div class="label">Давление</div>
+            <div class="value" id="pressure">—</div>
+            <div class="label">Влажность</div>
+            <div id="humidity" class="status">—</div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <span class="chip">Восход: <strong id="sunrise">—</strong></span>
+          <span class="chip">Закат: <strong id="sunset">—</strong></span>
+          <span class="chip">Облачность: <strong id="cloud">—</strong></span>
+          <span class="chip">Осадки: <strong id="precip">—</strong></span>
+        </div>
+      </div>
+
+      <div class="card span-4">
+        <div class="label">Качество погоды</div>
+        <div id="quality" class="value good">—</div>
+        <div class="label" style="margin-top:6px">Совет на сегодня</div>
+        <div id="advice" class="status">—</div>
+      </div>
+
+      <div class="card span-6">
+        <div class="label">Почасовой прогноз (следующие 24 ч)</div>
+        <canvas id="hourly-chart" height="140"></canvas>
+      </div>
+
+      <div class="card span-6">
+        <div class="label">Ежедневный прогноз (7 дней)</div>
+        <canvas id="daily-chart" height="140"></canvas>
+      </div>
+
+      <div class="card span-12">
+        <div class="label">Сводка по дням</div>
+        <div id="daily-list" class="list"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Данные: Open‑Meteo (без ключей). Обновление в реальном времени. Локальная часовая зона учитывается автоматически.
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    const beaufortDir = (deg) => {
+      if (deg == null || isNaN(deg)) return "—";
+      const dirs = ["С","ССВ","СВ","ВСВ","В","ВЮВ","ЮВ","ЮЮВ","Ю","ЮЮЗ","ЮЗ","ЗЮЗ","З","ЗСЗ","СЗ","ССЗ"];
+      const idx = Math.round(deg / 22.5) % 16;
+      return dirs[idx];
+    };
+
+    const formatTime = (iso, tz) => {
+      try {
+        const d = new Date(iso);
+        const opts = { hour:'2-digit', minute:'2-digit', timeZone: tz };
+        return d.toLocaleTimeString('ru-RU', opts);
+      } catch { return "—"; }
+    };
+
+    const toMmHg = (hPa) => (hPa == null ? null : Math.round(hPa * 0.750062));
+
+    const stateAdvice = ({ tempC, windMs, precipMm }) => {
+      if (precipMm > 0.5) return { label: "Дождливо", tone: "warn", tip: "Захватите непромокаемую куртку и обувь." };
+      if (windMs >= 8) return { label: "Ветрено", tone: "warn", tip: "Избегайте открытых возвышенностей, держите головной убор." };
+      if (tempC <= -5) return { label: "Мороз", tone: "bad", tip: "Тёплые слои, перчатки и защита лица." };
+      if (tempC >= 28) return { label: "Жара", tone: "warn", tip: "Пейте воду, избегайте полуденного солнца." };
+      return { label: "Комфортно", tone: "good", tip: "Хороший день для прогулки и дел." };
+    };
+
+    const wmoMap = {
+      0: "Ясно", 1: "В основном ясно", 2: "Переменная облачность", 3: "Пасмурно",
+      45: "Туман", 48: "Изморозь/туман",
+      51: "Морось слабая", 53: "Морось", 55: "Морось сильная",
+      61: "Дождь слабый", 63: "Дождь", 65: "Дождь сильный",
+      66: "Ледяной дождь слабый", 67: "Ледяной дождь",
+      71: "Снег слабый", 73: "Снег", 75: "Снег сильный",
+      77: "Снеговые зёрна", 80: "Ливни слабые", 81: "Ливни", 82: "Ливни сильные",
+      85: "Снегопад слабый", 86: "Снегопад сильный",
+      95: "Гроза", 96: "Гроза с градом", 99: "Гроза с сильным градом"
+    };
+
+    const unitState = {
+      metric: { tempUnit: "°C", windUnit: "м/с", pressureUnit: "мм рт. ст." },
+      imperial: { tempUnit: "°F", windUnit: "mph", pressureUnit: "мм рт. ст." } // давление оставим в мм рт. ст. для удобства
+    };
+
+    const toImperial = (v, kind) => {
+      if (v == null) return null;
+      if (kind === "temp") return Math.round(v * 9/5 + 32);
+      if (kind === "wind") return Math.round(v * 2.23694);
+      return v;
+    };
+
+    const hourlyChart = new Chart($("hourly-chart"), {
+      type: "line",
+      data: { labels: [], datasets: [
+        { label: "Температура", data: [], borderColor: "#60a5fa", tension: 0.25 },
+        { label: "Осадки (мм)", data: [], borderColor: "#34d399", tension: 0.25, yAxisID: 'y1' }
+      ]},
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: "#e5e7eb" } } },
+        scales: {
+          x: { ticks: { color:"#e5e7eb" } },
+          y: { ticks: { color:"#e5e7eb" } },
+          y1: { position:'right', grid:{ drawOnChartArea:false }, ticks:{ color:"#e5e7eb" } }
+        }
+      }
+    });
+
+    const dailyChart = new Chart($("daily-chart"), {
+      type: "bar",
+      data: { labels: [], datasets: [
+        { label: "Мин °C", data: [], backgroundColor: "rgba(96,165,250,0.5)" },
+        { label: "Макс °C", data: [], backgroundColor: "rgba(245,158,11,0.5)" }
+      ]},
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: "#e5e7eb" } } },
+        scales: { x: { ticks: { color:"#e5e7eb" } }, y: { ticks: { color:"#e5e7eb" } } }
+      }
+    });
+
+    async function fetchWeather(lat, lon, unitsKey) {
+      const errorEl = $("error");
+      errorEl.style.display = "none";
+      errorEl.textContent = "";
+
+      const metric = unitsKey === "metric";
+      const params = new URLSearchParams({
+        latitude: lat, longitude: lon,
+        hourly: "temperature_2m,precipitation,relativehumidity_2m,cloudcover,windspeed_10m,winddirection_10m,pressure_msl",
+        daily: "temperature_2m_max,temperature_2m_min,precipitation_sum,sunrise,sunset",
+        current: "temperature_2m,relativehumidity_2m,apparent_temperature,precipitation,cloudcover,windspeed_10m,winddirection_10m,pressure_msl,weathercode",
+        timezone: "auto"
+      });
+
+      const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
+      let data;
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        data = await res.json();
+      } catch (e) {
+        errorEl.style.display = "block";
+        errorEl.textContent = "Не удалось загрузить данные погоды. Проверьте соединение или попробуйте позже.";
+        // заполнение примером, чтобы сайт не выглядел пустым
+        data = demoFallback(lat, lon);
+      }
+
+      renderWeather(data, unitsKey);
+      $("updated-chip").textContent = "Обновлено: " + new Date().toLocaleString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+      $("local-time").textContent = " • Локальное время: " + new Date().toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+    }
+
+    function renderWeather(d, unitsKey) {
+      const tz = d.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const cur = d.current || d.current_weather || {};
+      const daily = d.daily || {};
+      const hourly = d.hourly || {};
+
+      const tempC = Math.round(cur.temperature_2m ?? d.current_weather?.temperature ?? 0);
+      const feelsC = Math.round(cur.apparent_temperature ?? tempC);
+      const windMs = Math.round(cur.windspeed_10m ?? d.current_weather?.windspeed ?? 0);
+      const windDeg = cur.winddirection_10m ?? d.current_weather?.winddirection ?? null;
+      const humidity = Math.round(cur.relativehumidity_2m ?? 0);
+      const pressure = toMmHg(cur.pressure_msl ?? null);
+      const cloud = Math.round(cur.cloudcover ?? 0);
+      const precip = +(cur.precipitation ?? 0);
+      const code = cur.weathercode ?? d.current_weather?.weathercode ?? 0;
+
+      const units = unitState[unitsKey];
+      const tempDisp = unitsKey === "metric" ? tempC : toImperial(tempC, "temp");
+      const feelsDisp = unitsKey === "metric" ? feelsC : toImperial(feelsC, "temp");
+      const windDisp = unitsKey === "metric" ? windMs : toImperial(windMs, "wind");
+
+      $("condition").textContent = wmoMap[code] || "—";
+      $("description").textContent = describe(code, precip, cloud);
+      $("temp").textContent = `${tempDisp} ${units.tempUnit}`;
+      $("feels").textContent = `${feelsDisp} ${units.tempUnit}`;
+      $("wind").textContent = `${windDisp} ${units.windUnit}`;
+      $("wind-dir").textContent = beaufortDir(windDeg);
+      $("pressure").textContent = pressure != null ? `${pressure} ${units.pressureUnit}` : "—";
+      $("humidity").textContent = humidity != null ? `${humidity}%` : "—";
+      $("cloud").textContent = `${cloud}%`;
+      $("precip").textContent = `${precip} мм`;
+
+      const adv = stateAdvice({ tempC, windMs, precipMm: precip });
+      $("quality").className = `value ${adv.tone}`;
+      $("quality").textContent = adv.label;
+      $("advice").textContent = adv.tip;
+
+      const hrLabels = hourly.time?.slice(0, 24)?.map(t => formatHourLabel(t, tz)) || [];
+      const hrTemp = hourly.temperature_2m?.slice(0, 24) || [];
+      const hrPrec = hourly.precipitation?.slice(0, 24) || [];
+
+      hourlyChart.data.labels = hrLabels;
+      hourlyChart.data.datasets[0].data = hrTemp;
+      hourlyChart.data.datasets[1].data = hrPrec;
+      hourlyChart.update();
+
+      const ddLabels = (daily.time || []).slice(0, 7).map(t => new Date(t).toLocaleDateString('ru-RU', { weekday:'short', day:'2-digit' }));
+      const ddMin = (daily.temperature_2m_min || []).slice(0, 7);
+      const ddMax = (daily.temperature_2m_max || []).slice(0, 7);
+
+      dailyChart.data.labels = ddLabels;
+      dailyChart.data.datasets[0].data = ddMin;
+      dailyChart.data.datasets[1].data = ddMax;
+      dailyChart.update();
+
+      const list = $("daily-list");
+      list.innerHTML = "";
+      const sunr = daily.sunrise || [];
+      const suns = daily.sunset || [];
+      const prcSum = daily.precipitation_sum || [];
+      (daily.time || []).slice(0, 7).forEach((t, i) => {
+        const item = document.createElement("div");
+        item.className = "item";
+        item.innerHTML = `
+          <div class="top">
+            <div>${new Date(t).toLocaleDateString('ru-RU', { weekday:'long', day:'2-digit', month:'short' })}</div>
+            <div>${wmoMap[code] || "—"}</div>
+          </div>
+          <div class="big">${Math.round(ddMin[i])}…${Math.round(ddMax[i])} °C</div>
+          <div class="top">
+            <div>Осадки: ${+(prcSum[i] ?? 0)} мм</div>
+            <div>Солнце: ${formatTime(sunr[i], tz)} / ${formatTime(suns[i], tz)}</div>
+          </div>
+        `;
+        list.appendChild(item);
+      });
+
+      $("sunrise").textContent = formatTime(sunr?.[0], tz);
+      $("sunset").textContent = formatTime(suns?.[0], tz);
+    }
+
+    function formatHourLabel(iso, tz) {
+      try {
+        const d = new Date(iso);
+        return d.toLocaleTimeString('ru-RU', { hour:'2-digit', timeZone: tz });
+      } catch { return "—"; }
+    }
+
+    function describe(code, precip, cloud) {
+      if (precip > 0.5 && code >= 61 && code <= 65) return "Идёт дождь, местами умеренно.";
+      if (precip > 0.5 && code >= 71 && code <= 75) return "Снегопад, будьте осторожны.";
+      if (cloud >= 80 && (code === 3 || code === 2)) return "Плотная облачность, мало солнца.";
+      if (code === 0) return "Ясно и светло.";
+      if (code === 45 || code === 48) return "Туман, видимость снижена.";
+      return "Переменная облачность, возможны кратковременные осадки.";
+    }
+
+    function demoFallback(lat, lon) {
+      const now = new Date();
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const baseTemp = 7, baseWind = 2, baseCloud = 70;
+      const hours = Array.from({ length: 24 }, (_, i) => new Date(now.getTime() + i * 3600000).toISOString());
+      const days = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(now.getTime() + i * 86400000);
+        return d.toISOString().slice(0, 10);
+      });
+      return {
+        latitude: lat, longitude: lon, timezone: tz,
+        current: {
+          temperature_2m: baseTemp,
+          apparent_temperature: baseTemp - 2,
+          windspeed_10m: baseWind,
+          winddirection_10m: 180,
+          relativehumidity_2m: 72,
+          pressure_msl: 692 / 0.750062,
+          cloudcover: baseCloud,
+          precipitation: 0.2,
+          weathercode: 3
+        },
+        hourly: {
+          time: hours,
+          temperature_2m: hours.map((_, i) => baseTemp + Math.sin(i/3) * 3),
+          precipitation: hours.map((_, i) => (i % 6 === 0 ? 0.6 : 0.1)),
+          relativehumidity_2m: hours.map(() => 70),
+          cloudcover: hours.map(() => baseCloud),
+          windspeed_10m: hours.map(() => baseWind),
+          winddirection_10m: hours.map(() => 180),
+          pressure_msl: hours.map(() => 692 / 0.750062)
+        },
+        daily: {
+          time: days,
+          temperature_2m_min: days.map((_, i) => 0 + Math.sin(i/2)),
+          temperature_2m_max: days.map((_, i) => 10 + Math.cos(i/2) * 2),
+          precipitation_sum: days.map((_, i) => (i % 2 === 0 ? 1.2 : 0.3)),
+          sunrise: days.map(d => new Date(d + "T06:30:00Z").toISOString()),
+          sunset: days.map(d => new Date(d + "T16:45:00Z").toISOString())
+        }
+      };
+    }
+
+    // UI wiring
+    const locSel = $("location-select");
+    const unitSel = $("units-select");
+    $("refresh-btn").addEventListener("click", () => {
+      const [lat, lon] = locSel.value.split(",").map(Number);
+      fetchWeather(lat, lon, unitSel.value);
+    });
+    locSel.addEventListener("change", () => {
+      const [lat, lon] = locSel.value.split(",").map(Number);
+      fetchWeather(lat, lon, unitSel.value);
+    });
+    unitSel.addEventListener("change", () => {
+      const [lat, lon] = locSel.value.split(",").map(Number);
+      fetchWeather(lat, lon, unitSel.value);
+    });
+
+    // initial load: Kaskelen
+    (function init() {
+      const [lat, lon] = locSel.value.split(",").map(Number);
+      fetchWeather(lat, lon, unitSel.value);
+      setInterval(() => { $("local-time").textContent = " • Локальное время: " + new Date().toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit' }); }, 30000);
+    })();
+  </script>
+</body>
+<body>  <div id="weather-animation"></div>
+</body>
+<body>
+  <script src="script.js" defer></script>
+</body>
+</html>
